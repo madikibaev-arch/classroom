@@ -4,6 +4,9 @@ on:
   push:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   apk:
     runs-on: ubuntu-latest
@@ -13,7 +16,8 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
+      - name: Accept SDK licenses
+        run: yes | sdkmanager --licenses >/dev/null 2>&1 || true
       - name: Gradle wrapper
         working-directory: classroom/android
         run: gradle wrapper --gradle-version 8.7
@@ -44,3 +48,33 @@ jobs:
         with:
           name: classroom-windows-exe
           path: classroom/dist/*.exe
+
+  release:
+    needs: [apk, exe]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download apk
+        uses: actions/download-artifact@v4
+        with:
+          name: teacher-apk
+          path: dist
+        continue-on-error: true
+      - name: Download exe
+        uses: actions/download-artifact@v4
+        with:
+          name: classroom-windows-exe
+          path: dist
+        continue-on-error: true
+      - name: List files
+        run: ls -la dist || true
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Последняя сборка
+          files: dist/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
