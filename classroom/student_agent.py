@@ -67,12 +67,13 @@ class AgentUI:
         self._banner_until = 0
 
         root.title("Классный монитор — агент")
-        root.geometry("440x240")
+        root.geometry("460x300")
         root.attributes("-topmost", True)
 
         tk.Label(root, text="Ваш экран виден преподавателю",
                  font=("Arial", 13, "bold"), fg="#b00").pack(pady=(14, 4))
-        self.status = tk.Label(root, text="Подключение…", fg="#555")
+        self.status = tk.Label(root, text="Подключение…", fg="#555",
+                               wraplength=430, justify="center")
         self.status.pack()
         self.banner = tk.Label(root, text="", font=("Arial", 12, "bold"))
         self.banner.pack(pady=4)
@@ -204,8 +205,8 @@ def net_loop():
             if not sio.connected:
                 sio.connect(url, wait_timeout=5)
             time.sleep(1)
-        except Exception:
-            ui.set_status("Не удаётся подключиться, повтор…", "#b60")
+        except Exception as e:
+            ui.set_status(f"Ошибка: {type(e).__name__}: {e}"[:140], "#b60")
             time.sleep(3)
 
 

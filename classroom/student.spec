@@ -2,14 +2,22 @@
 # Сборка агента ученика в один файл StudentAgent.exe
 # Запуск:  pyinstaller --clean -y student.spec
 
+from PyInstaller.utils.hooks import collect_submodules
+
+# python-socketio / engineio грузят транспорты динамически — собираем их явно,
+# иначе в .exe может не попасть модуль связи и агент не подключится.
+hidden = (
+    collect_submodules('engineio')
+    + collect_submodules('socketio')
+    + ['websocket', 'requests', 'engineio.async_drivers.threading']
+)
+
 a = Analysis(
     ['student_agent.py'],
     pathex=[],
     binaries=[],
     datas=[],
-    hiddenimports=[
-        'engineio.async_drivers.threading',
-    ],
+    hiddenimports=hidden,
     hookspath=[],
     runtime_hooks=[],
     excludes=[],
@@ -28,5 +36,5 @@ exe = EXE(
     strip=False,
     upx=False,
     runtime_tmpdir=None,
-    console=False,         # без чёрного окна; видно только окно согласия агента
+    console=False,
 )
