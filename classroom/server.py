@@ -22,6 +22,8 @@
 import os
 import sys
 import socket
+import secrets
+import string
 import threading
 import webbrowser
 
@@ -29,7 +31,12 @@ from flask import Flask, render_template, request
 from flask_socketio import SocketIO, join_room
 
 # ---- Настройки ------------------------------------------------------------
-CLASS_CODE = "1234"   # общий код; смените на свой и сообщите классу
+# Класс-код не задаётся в коде (репозиторий публичный). При каждом запуске
+# генерируется случайный код и показывается в окне сервера. Его и сообщаешь
+# ученикам/вводишь в телефоне. Можно задать свой через переменную окружения
+# CLASS_CODE.
+_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # без похожих 0/O, 1/I
+CLASS_CODE = os.environ.get("CLASS_CODE") or "".join(secrets.choice(_ALPHABET) for _ in range(6))
 PORT = 8080
 
 
@@ -133,14 +140,21 @@ def open_browser():
 
 def main():
     ip = local_ip()
-    print("=" * 56)
+    print("=" * 60)
     print("  Сервер классного монитора запущен")
-    print(f"  Консоль преподавателя:  http://localhost:{PORT}")
-    print(f"  С других устройств/телефона:  http://{ip}:{PORT}")
-    print(f"  Адрес для агентов учеников:  {ip}:{PORT}")
-    print(f"  Класс-код: {CLASS_CODE}")
+    print()
+    print(f"      КЛАСС-КОД:  {CLASS_CODE}")
+    print("      (его сообщи ученикам и впиши в телефоне)")
+    print()
+    print("  Адреса в одной локальной сети:")
+    print(f"    на этом компьютере:         http://localhost:{PORT}")
+    print(f"    телефон/другие устройства:  http://{ip}:{PORT}")
+    print(f"    для агентов учеников:       {ip}:{PORT}")
+    print()
+    print("  Для учеников в другом городе — запускай через start_online.bat,")
+    print("  он даст публичную ссылку https://...trycloudflare.com")
     print("  (окно можно свернуть; закрытие окна остановит сервер)")
-    print("=" * 56)
+    print("=" * 60)
     # открыть консоль в браузере автоматически (удобно в собранном .exe)
     threading.Timer(1.5, open_browser).start()
     socketio.run(app, host='0.0.0.0', port=PORT, allow_unsafe_werkzeug=True)
