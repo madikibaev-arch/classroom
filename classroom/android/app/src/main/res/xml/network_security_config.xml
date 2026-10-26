@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Разрешаем обычный http (нешифрованный) — сервер класса в локальной сети
+     работает по http, без этого Android блокировал бы соединение. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Консоль преподавателя</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, Arial, sans-serif; background: #111; color: #eee; }
+  header { display: flex; align-items: center; gap: 12px; padding: 10px 14px;
+           background: #1c1c1c; position: sticky; top: 0; z-index: 5; }
+  header h1 { font-size: 16px; margin: 0; flex: 1; }
+  button { font: inherit; padding: 8px 12px; border: 0; border-radius: 8px;
+           background: #3a6; color: #fff; cursor: pointer; }
+  button.secondary { background: #456; }
+  #count { color: #9ad; font-size: 14px; }
+  #grid { display: grid; gap: 10px; padding: 12px;
+          grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+  .tile { background: #000; border: 1px solid #333; border-radius: 10px; overflow: hidden; cursor: pointer; }
+  .tile img { width: 100%; display: block; aspect-ratio: 16/10; object-fit: contain; background: #000; }
+  .tile .name { padding: 6px 8px; font-size: 13px; background: #1c1c1c; }
+  #empty { padding: 40px; text-align: center; color: #888; }
+
+  /* полноэкранный просмотр одного ученика */
+  #overlay { position: fixed; inset: 0; background: #000; display: none; flex-direction: column; z-index: 10; }
+  #overlay.on { display: flex; }
+  #obar { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: #1c1c1c; flex-wrap: wrap; }
+  #obar .title { flex: 1; font-size: 15px; }
+  #stage { flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  #screen { max-width: 100%; max-height: 100%; touch-action: none; }
+  #ctrlBtn.active { background: #c33; }
+  #keybox { padding: 7px 10px; border-radius: 8px; border: 1px solid #555; background: #222; color: #eee; min-width: 140px; }
+  .hint { font-size: 12px; color: #9a9; width: 100%; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Консоль преподавателя</h1>
+  <span id="count">учеников: 0</span>
+  <button class="secondary" onclick="broadcast()">Сообщение всем</button>
+</header>
+
+<div id="grid"></div>
+<div id="empty">Ожидание учеников… Запустите агент на их компьютерах и введите класс-код.</div>
+
+<div id="overlay">
+  <div id="obar">
+    <span class="title" id="oname">—</span>
+    <button id="ctrlBtn" onclick="toggleControl()">Управление: выкл</button>
+    <input id="keybox" placeholder="печатать здесь → ученику" autocomplete="off">
+    <button class="secondary" onclick="closeOverlay()">Закрыть</button>
+    <div class="hint" id="ctrlHint">В режиме управления движения и клики по экрану, а также текст из поля передаются ученику. У ученика это видно, он может запретить.</div>
+  </div>
+  <div id="stage"><img id="screen" alt=""></div>
+</div>
+
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+let code = localStorage.getItem('classCode') || '';
+if (!code) { code = prompt('Класс-код:') || ''; localStorage.setItem('classCode', code); }
+
+const socket = io();
+const grid = document.getElementById('grid');
+const empty = document.getElementById('empty');
+const tiles = {};         // sid -> {tile, img}
+let known = new Set();     // известные sid
+let current = null;        // sid открытого ученика
+let controlOn = false;
+
+socket.on('connect', () => socket.emit('register_teacher', { code }));
+socket.on('denied', d => { alert(d.reason); localStorage.removeItem('classCode'); });
+
+socket.on('student_list', list => {
+  known = new Set(list.map(s => s.sid));
+  list.forEach(ensureTile);
+  // убрать плитки ушедших
+  Object.keys(tiles).forEach(sid => { if (!known.has(sid)) removeTile(sid); });
+  updateCount(list.length);
+  if (current && !known.has(current)) closeOverlay();
+});
+
+socket.on('frame', f => {
+  if (!tiles[f.sid]) ensureTile(f);
+  if (tiles[f.sid]) tiles[f.sid].img.src = 'data:image/jpeg;base64,' + f.data;
+  if (current === f.sid) document.getElementById('screen').src = 'data:image/jpeg;base64,' + f.data;
+});
+
+function ensureTile(s) {
+  if (tiles[s.sid]) { tiles[s.sid].name.textContent = s.name || 'ученик'; return; }
+  empty.style.display = 'none';
+  const tile = document.createElement('div'); tile.className = 'tile';
+  const img = document.createElement('img');
+  const name = document.createElement('div'); name.className = 'name'; name.textContent = s.name || 'ученик';
+  tile.appendChild(img); tile.appendChild(name);
+  tile.onclick = () => openOverlay(s.sid, name.textContent);
+  grid.appendChild(tile);
+  tiles[s.sid] = { tile, img, name };
+}
+
+function removeTile(sid) {
+  if (tiles[sid]) { tiles[sid].tile.remove(); delete tiles[sid]; }
+  if (Object.keys(tiles).length === 0) empty.style.display = 'block';
+}
+
+function updateCount(n) { document.getElementById('count').textContent = 'учеников: ' + n; }
+
+/* ---- полноэкранный просмотр + управление ---- */
+const overlay = document.getElementById('overlay');
+const screen = document.getElementById('screen');
+const ctrlBtn = document.getElementById('ctrlBtn');
+
+function openOverlay(sid, name) {
+  current = sid;
+  document.getElementById('oname').textContent = name;
+  setControl(false);
+  overlay.classList.add('on');
+}
+function closeOverlay() { overlay.classList.remove('on'); current = null; setControl(false); }
+
+function toggleControl() { setControl(!controlOn); }
+function setControl(on) {
+  controlOn = on;
+  ctrlBtn.textContent = 'Управление: ' + (on ? 'ВКЛ' : 'выкл');
+  ctrlBtn.classList.toggle('active', on);
+}
+
+function norm(e) {
+  const r = screen.getBoundingClientRect();
+  const p = e.touches ? e.touches[0] : e;
+  let x = (p.clientX - r.left) / r.width;
+  let y = (p.clientY - r.top) / r.height;
+  return { x: Math.min(1, Math.max(0, x)), y: Math.min(1, Math.max(0, y)) };
+}
+function send(type, extra) {
+  if (!current) return;
+  socket.emit('control', Object.assign({ target: current, type }, extra || {}));
+}
+
+let lastMove = 0;
+function onMove(e) {
+  if (!controlOn) return;
+  const now = Date.now(); if (now - lastMove < 60) return; lastMove = now;
+  const n = norm(e); send('move', n); e.preventDefault();
+}
+function onDown(e) { if (!controlOn) return; const n = norm(e); send('click', n); e.preventDefault(); }
+
+screen.addEventListener('mousemove', onMove);
+screen.addEventListener('mousedown', onDown);
+screen.addEventListener('touchmove', onMove, { passive: false });
+screen.addEventListener('touchstart', onDown, { passive: false });
+
+document.addEventListener('keydown', e => {
+  if (!controlOn || !current) return;
+  if (document.activeElement === document.getElementById('keybox')) return;
+  send('key', { key: e.key }); e.preventDefault();
+});
+
+// поле для ввода текста (удобно с телефона)
+const keybox = document.getElementById('keybox');
+keybox.addEventListener('keydown', e => {
+  if (!controlOn || !current) return;
+  if (e.key === 'Enter') { send('key', { key: 'Enter' }); keybox.value = ''; }
+});
+keybox.addEventListener('input', e => {
+  if (!controlOn || !current) { keybox.value = ''; return; }
+  const ch = e.data;
+  if (ch) send('key', { key: ch });
+});
+
+function broadcast() {
+  const t = prompt('Сообщение всем ученикам:');
+  if (t) socket.emit('message_all', { text: t });
+}
+</script>
+</body>
+</html>
